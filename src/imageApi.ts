@@ -10,7 +10,7 @@ interface ChatChoice {
   };
 }
 
-interface ChatImageRequestOptions {
+interface ImageGenerationRequestOptions {
   model: string;
   prompt: string;
   n: number;
@@ -98,26 +98,14 @@ function collectImagesFromText(content: string, results: ImageItem[], seen: Set<
   }
 }
 
-export function buildChatImageRequest(options: ChatImageRequestOptions) {
-  const imageOptions = [
-    `图片数量：${options.n}`,
-    `尺寸：${options.size}`,
-    `质量：${options.quality}`,
-    `背景：${options.background}`,
-  ].join('\n');
-
+export function buildImageGenerationRequest(options: ImageGenerationRequestOptions) {
   return {
     model: options.model,
+    prompt: options.prompt,
     n: options.n,
     size: options.size,
     quality: options.quality,
     background: options.background,
-    messages: [
-      {
-        role: 'user',
-        content: `${options.prompt.trim()}\n\n${imageOptions}`.trim(),
-      },
-    ],
   };
 }
 

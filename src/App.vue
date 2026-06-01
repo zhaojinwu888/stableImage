@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { buildChatImageRequest, extractImages, type ImageItem } from './imageApi';
+import { buildImageGenerationRequest, extractImages, type ImageItem } from './imageApi';
 
 type DownloadMode = 'direct' | 'link';
 
@@ -23,7 +23,7 @@ let timer = 0;
 
 const normalizedEndpoint = computed(() => {
   const trimmed = baseUrl.value.trim().replace(/\/+$/, '');
-  return `${trimmed}/v1/chat/completions`;
+  return `${trimmed}/v1/images/generations`;
 });
 
 function formatElapsed(ms: number) {
@@ -85,7 +85,7 @@ async function generateImage() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey.value.trim()}`,
       },
-      body: JSON.stringify(buildChatImageRequest({
+      body: JSON.stringify(buildImageGenerationRequest({
         model: model.value,
         prompt: prompt.value,
         n: Number(n.value),
@@ -132,7 +132,7 @@ function clearResult() {
         <label class="field wide">
           <span>Base URL</span>
           <input v-model="baseUrl" autocomplete="url" />
-          <small>程序会自动拼成 /v1/chat/completions。</small>
+          <small>程序会自动拼成 /v1/images/generations。</small>
         </label>
 
         <label class="field wide">
