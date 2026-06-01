@@ -1,19 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { buildChatImageRequest, extractImages, type ImageItem } from './imageApi';
 
 type DownloadMode = 'direct' | 'link';
-
-interface ImageItem {
-  url?: string;
-  b64_json?: string;
-  revised_prompt?: string;
-}
-
-interface ChatChoice {
-  message?: {
-    content?: unknown;
-  };
-}
 
 const baseUrl = ref('');
 const apiKey = ref('');
@@ -65,56 +54,6 @@ function imageSrc(image: ImageItem) {
   return image.url ?? '';
 }
 
-function extractImagesFromText(content: string) {
-  const results: ImageItem[] = [];
-  const seen = new Set<string>();
-  const patterns = [
-    /data:image\/(?:png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)/g,
-    /https?:\/\/[^\s"'<>)]*\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>)]*)?/gi,
-  ];
-
-  for (const pattern of patterns) {
-    for (const match of content.matchAll(pattern)) {
-      const value = match[1] ?? match[0];
-      if (seen.has(value)) continue;
-
-      seen.add(value);
-      results.push(match[1] ? { b64_json: value } : { url: value });
-    }
-  }
-
-  return results;
-}
-
-function extractImages(payload: any) {
-  if (Array.isArray(payload.data)) {
-    return payload.data as ImageItem[];
-  }
-
-  if (!Array.isArray(payload.choices)) {
-    return [];
-  }
-
-  return payload.choices.flatMap((choice: ChatChoice) => {
-    const content = choice.message?.content;
-    if (typeof content === 'string') {
-      return extractImagesFromText(content);
-    }
-
-    if (Array.isArray(content)) {
-      return content.flatMap((item) => {
-        if (typeof item?.image_url?.url === 'string') return [{ url: item.image_url.url }];
-        if (typeof item?.url === 'string') return [{ url: item.url }];
-        if (typeof item?.b64_json === 'string') return [{ b64_json: item.b64_json }];
-        if (typeof item?.text === 'string') return extractImagesFromText(item.text);
-        return [];
-      });
-    }
-
-    return [];
-  });
-}
-
 function downloadImage(image: ImageItem, index: number) {
   const href = imageSrc(image);
   if (!href) return;
@@ -146,14 +85,14 @@ async function generateImage() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey.value.trim()}`,
       },
-      body: JSON.stringify({
+      body: JSON.stringify(buildChatImageRequest({
         model: model.value,
         prompt: prompt.value,
         n: Number(n.value),
         size: size.value,
         quality: quality.value,
         background: background.value,
-      }),
+      })),
     });
 
     const payload = await response.json().catch(() => ({}));
