@@ -9,17 +9,17 @@ interface ImageItem {
   revised_prompt?: string;
 }
 
-const baseUrl = ref('https://stableapi.io');
+const baseUrl = ref('');
 const apiKey = ref('');
 const model = ref('gpt-image-2');
 const n = ref(1);
-const prompt = ref('中式传统工笔画，阖家幸福的一家人，庭院古宅场景，金玉满堂氛围，富贵吉祥，色调温润典雅，祥云环绕，古风服饰，画面祥和大气，细节精致，8K高清，国风唯美，竖版构图');
+const prompt = ref('');
 const size = ref('1024x1024');
 const quality = ref('high');
 const background = ref('auto');
 const downloadMode = ref<DownloadMode>('direct');
 const loading = ref(false);
-const elapsed = ref('07:03');
+const elapsed = ref('');
 const error = ref('');
 const images = ref<ImageItem[]>([]);
 
@@ -121,16 +121,16 @@ async function generateImage() {
 function clearResult() {
   images.value = [];
   error.value = '';
-  elapsed.value = '07:03';
+  elapsed.value = '';
 }
 </script>
 
 <template>
   <main class="page-shell">
     <section class="control-panel">
-      <h1>NewAPI GPT<br />Image</h1>
+      <h1>StableAPI GPT<br />Image</h1>
       <p class="intro">
-        这个页面直接在浏览器里调用 NewAPI 的 OpenAI 兼容图片接口。默认模型名填的是
+        这个页面直接在浏览器里调用 StableAPI 的 OpenAI 兼容图片接口。默认模型名填的是
         <b>gpt-image-2</b>，如果你在平台里配置的是别名，比如 <b>gptimage2</b>，直接改掉即可。
       </p>
 
