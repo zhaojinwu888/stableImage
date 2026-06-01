@@ -20,6 +20,7 @@ const images = ref<ImageItem[]>([]);
 
 let startedAt = 0;
 let timer = 0;
+const retryDelays = [800, 1600];
 
 const normalizedEndpoint = computed(() => {
   const trimmed = baseUrl.value.trim().replace(/\/+$/, '');
@@ -44,6 +45,48 @@ function startClock() {
 
 function stopClock() {
   window.clearInterval(timer);
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isRetryableError(message: string, status?: number) {
+  const normalized = message.toLowerCase();
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    normalized.includes('upstream connect error') ||
+    normalized.includes('connection refused') ||
+    normalized.includes('remote connection failure') ||
+    normalized.includes('transport failure') ||
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror')
+  );
+}
+
+function formatRequestError(message: string, status?: number) {
+  if (isRetryableError(message, status)) {
+    return `上游服务连接失败或暂时不可用，已自动重试但仍失败。请稍后再试，或检查 Base URL/平台上游渠道是否正常。原始错误：${message}`;
+  }
+
+  return message;
+}
+
+async function readResponsePayload(response: Response) {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
 }
 
 function imageSrc(image: ImageItem) {
@@ -79,33 +122,49 @@ async function generateImage() {
   startClock();
 
   try {
-    const response = await fetch(normalizedEndpoint.value, {
+    const requestBody = JSON.stringify(buildImageGenerationRequest({
+      model: model.value,
+      prompt: prompt.value,
+      n: Number(n.value),
+      size: size.value,
+      quality: quality.value,
+      background: background.value,
+    }));
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+      const response = await fetch(normalizedEndpoint.value, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey.value.trim()}`,
       },
-      body: JSON.stringify(buildImageGenerationRequest({
-        model: model.value,
-        prompt: prompt.value,
-        n: Number(n.value),
-        size: size.value,
-        quality: quality.value,
-        background: background.value,
-      })),
-    });
+        body: requestBody,
+      });
 
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.error?.message ?? payload?.message ?? `请求失败：${response.status}`);
+      const payload = await readResponsePayload(response);
+      if (!response.ok) {
+        const message = payload?.error?.message ?? payload?.message ?? `请求失败：${response.status}`;
+        lastError = new Error(formatRequestError(message, response.status));
+        if (attempt < retryDelays.length && isRetryableError(message, response.status)) {
+          await wait(retryDelays[attempt]);
+          continue;
+        }
+
+        throw lastError;
+      }
+
+      images.value = extractImages(payload);
+      if (images.value.length === 0) {
+        error.value = '接口返回成功，但没有找到图片数据。';
+      }
+      return;
     }
 
-    images.value = extractImages(payload);
-    if (images.value.length === 0) {
-      error.value = '接口返回成功，但没有找到图片数据。';
-    }
+    throw lastError ?? new Error('生成失败，请稍后重试。');
   } catch (requestError) {
-    error.value = requestError instanceof Error ? requestError.message : '生成失败，请稍后重试。';
+    const message = requestError instanceof Error ? requestError.message : '生成失败，请稍后重试。';
+    error.value = formatRequestError(message);
   } finally {
     loading.value = false;
     stopClock();
