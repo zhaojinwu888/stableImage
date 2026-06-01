@@ -1,0 +1,248 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+
+type DownloadMode = 'direct' | 'link';
+
+interface ImageItem {
+  url?: string;
+  b64_json?: string;
+  revised_prompt?: string;
+}
+
+const baseUrl = ref('https://stableapi.io');
+const apiKey = ref('');
+const model = ref('gpt-image-2');
+const n = ref(1);
+const prompt = ref('中式传统工笔画，阖家幸福的一家人，庭院古宅场景，金玉满堂氛围，富贵吉祥，色调温润典雅，祥云环绕，古风服饰，画面祥和大气，细节精致，8K高清，国风唯美，竖版构图');
+const size = ref('1024x1024');
+const quality = ref('high');
+const background = ref('auto');
+const downloadMode = ref<DownloadMode>('direct');
+const loading = ref(false);
+const elapsed = ref('07:03');
+const error = ref('');
+const images = ref<ImageItem[]>([]);
+
+let startedAt = 0;
+let timer = 0;
+
+const normalizedEndpoint = computed(() => {
+  const trimmed = baseUrl.value.trim().replace(/\/+$/, '');
+  return `${trimmed}/v1/chat/completions`;
+});
+
+function formatElapsed(ms: number) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+}
+
+function startClock() {
+  startedAt = Date.now();
+  elapsed.value = '00:00';
+  window.clearInterval(timer);
+  timer = window.setInterval(() => {
+    elapsed.value = formatElapsed(Date.now() - startedAt);
+  }, 1000);
+}
+
+function stopClock() {
+  window.clearInterval(timer);
+}
+
+function imageSrc(image: ImageItem) {
+  if (image.b64_json) {
+    return `data:image/png;base64,${image.b64_json}`;
+  }
+
+  return image.url ?? '';
+}
+
+function downloadImage(image: ImageItem, index: number) {
+  const href = imageSrc(image);
+  if (!href) return;
+
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = `newapi-gpt-image-${index + 1}.png`;
+  anchor.target = downloadMode.value === 'link' ? '_blank' : '_self';
+  anchor.rel = 'noreferrer';
+  anchor.click();
+}
+
+async function generateImage() {
+  error.value = '';
+  images.value = [];
+
+  if (!apiKey.value.trim()) {
+    error.value = '请先填写 API Key。';
+    return;
+  }
+
+  loading.value = true;
+  startClock();
+
+  try {
+    const response = await fetch(normalizedEndpoint.value, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.value.trim()}`,
+      },
+      body: JSON.stringify({
+        model: model.value,
+        prompt: prompt.value,
+        n: Number(n.value),
+        size: size.value,
+        quality: quality.value,
+        background: background.value,
+        response_format: 'b64_json',
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error?.message ?? payload?.message ?? `请求失败：${response.status}`);
+    }
+
+    images.value = Array.isArray(payload.data) ? payload.data : [];
+    if (images.value.length === 0) {
+      error.value = '接口返回成功，但没有找到图片数据。';
+    }
+  } catch (requestError) {
+    error.value = requestError instanceof Error ? requestError.message : '生成失败，请稍后重试。';
+  } finally {
+    loading.value = false;
+    stopClock();
+  }
+}
+
+function clearResult() {
+  images.value = [];
+  error.value = '';
+  elapsed.value = '07:03';
+}
+</script>
+
+<template>
+  <main class="page-shell">
+    <section class="control-panel">
+      <h1>NewAPI GPT<br />Image</h1>
+      <p class="intro">
+        这个页面直接在浏览器里调用 NewAPI 的 OpenAI 兼容图片接口。默认模型名填的是
+        <b>gpt-image-2</b>，如果你在平台里配置的是别名，比如 <b>gptimage2</b>，直接改掉即可。
+      </p>
+
+      <form class="form-grid" @submit.prevent="generateImage">
+        <label class="field wide">
+          <span>Base URL</span>
+          <input v-model="baseUrl" autocomplete="url" />
+          <small>程序会自动拼成 /v1/chat/completions。</small>
+        </label>
+
+        <label class="field wide">
+          <span>API Key</span>
+          <input v-model="apiKey" autocomplete="off" type="password" />
+          <small>出于安全考虑，页面不会把 API Key 保存到本地存储。</small>
+        </label>
+
+        <label class="field">
+          <span>模型名</span>
+          <input v-model="model" />
+        </label>
+
+        <label class="field">
+          <span>图片数量</span>
+          <input v-model.number="n" min="1" max="4" type="number" />
+        </label>
+
+        <label class="field wide">
+          <span>提示词</span>
+          <textarea v-model="prompt" rows="6" />
+        </label>
+
+        <label class="field">
+          <span>尺寸</span>
+          <select v-model="size">
+            <option>1024x1024</option>
+            <option>1024x1536</option>
+            <option>1536x1024</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>质量</span>
+          <select v-model="quality">
+            <option>high</option>
+            <option>medium</option>
+            <option>low</option>
+            <option>auto</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>背景</span>
+          <select v-model="background">
+            <option value="auto">默认</option>
+            <option value="transparent">透明</option>
+            <option value="opaque">不透明</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>下载方式</span>
+          <select v-model="downloadMode">
+            <option value="direct">固定为直接下载模式</option>
+            <option value="link">打开图片链接</option>
+          </select>
+        </label>
+
+        <div class="actions wide">
+          <button class="primary" :disabled="loading" type="submit">
+            {{ loading ? '生成中' : '生成图片' }}
+          </button>
+          <button class="secondary" type="button" @click="clearResult">清空结果</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="result-panel">
+      <header class="result-header">
+        <div>
+          <h2>生成结果</h2>
+          <p>当前固定请求 b64_json，确保下载按钮直接保存图片文件。</p>
+        </div>
+        <div class="status">
+          <span :class="{ active: loading }">{{ loading ? '生成中' : '空闲' }}</span>
+          <p>耗时 {{ elapsed }}</p>
+        </div>
+      </header>
+
+      <div v-if="error" class="error-box">
+        {{ error }}
+      </div>
+
+      <div v-else-if="images.length" class="gallery" :class="{ single: images.length === 1 }">
+        <article v-for="(image, index) in images" :key="index" class="image-card">
+          <img :src="imageSrc(image)" :alt="`生成图片 ${index + 1}`" />
+          <div class="image-actions">
+            <span>图片 {{ index + 1 }}</span>
+            <button type="button" @click="downloadImage(image, index)">下载</button>
+          </div>
+        </article>
+      </div>
+
+      <div v-else class="empty-state">
+        <p>
+          填好左侧参数后点击“生成图片”。<br />
+          如果你是直接双击打开本地 HTML，某些浏览器环境可能会遇到跨域限制，建议用一个本地静态服务器访问这个页面。
+        </p>
+      </div>
+
+      <p class="notice">
+        注意：这是前端直连方案，API Key 会出现在浏览器环境中。正式部署时，更安全的做法是让你自己的后端代理请求。
+      </p>
+    </section>
+  </main>
+</template>
