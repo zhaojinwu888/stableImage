@@ -65,7 +65,7 @@ function downloadImage(image: ImageItem, index: number) {
 
   const anchor = document.createElement('a');
   anchor.href = href;
-  anchor.download = `newapi-gpt-image-${index + 1}.png`;
+  anchor.download = `stableapi-gpt-image-${index + 1}.png`;
   anchor.target = downloadMode.value === 'link' ? '_blank' : '_self';
   anchor.rel = 'noreferrer';
   anchor.click();
