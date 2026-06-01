@@ -9,6 +9,12 @@ interface ImageItem {
   revised_prompt?: string;
 }
 
+interface ChatChoice {
+  message?: {
+    content?: unknown;
+  };
+}
+
 const baseUrl = ref('');
 const apiKey = ref('');
 const model = ref('gpt-image-2');
@@ -59,6 +65,56 @@ function imageSrc(image: ImageItem) {
   return image.url ?? '';
 }
 
+function extractImagesFromText(content: string) {
+  const results: ImageItem[] = [];
+  const seen = new Set<string>();
+  const patterns = [
+    /data:image\/(?:png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)/g,
+    /https?:\/\/[^\s"'<>)]*\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>)]*)?/gi,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of content.matchAll(pattern)) {
+      const value = match[1] ?? match[0];
+      if (seen.has(value)) continue;
+
+      seen.add(value);
+      results.push(match[1] ? { b64_json: value } : { url: value });
+    }
+  }
+
+  return results;
+}
+
+function extractImages(payload: any) {
+  if (Array.isArray(payload.data)) {
+    return payload.data as ImageItem[];
+  }
+
+  if (!Array.isArray(payload.choices)) {
+    return [];
+  }
+
+  return payload.choices.flatMap((choice: ChatChoice) => {
+    const content = choice.message?.content;
+    if (typeof content === 'string') {
+      return extractImagesFromText(content);
+    }
+
+    if (Array.isArray(content)) {
+      return content.flatMap((item) => {
+        if (typeof item?.image_url?.url === 'string') return [{ url: item.image_url.url }];
+        if (typeof item?.url === 'string') return [{ url: item.url }];
+        if (typeof item?.b64_json === 'string') return [{ b64_json: item.b64_json }];
+        if (typeof item?.text === 'string') return extractImagesFromText(item.text);
+        return [];
+      });
+    }
+
+    return [];
+  });
+}
+
 function downloadImage(image: ImageItem, index: number) {
   const href = imageSrc(image);
   if (!href) return;
@@ -97,7 +153,6 @@ async function generateImage() {
         size: size.value,
         quality: quality.value,
         background: background.value,
-        response_format: 'b64_json',
       }),
     });
 
@@ -106,7 +161,7 @@ async function generateImage() {
       throw new Error(payload?.error?.message ?? payload?.message ?? `请求失败：${response.status}`);
     }
 
-    images.value = Array.isArray(payload.data) ? payload.data : [];
+    images.value = extractImages(payload);
     if (images.value.length === 0) {
       error.value = '接口返回成功，但没有找到图片数据。';
     }
@@ -211,7 +266,7 @@ function clearResult() {
       <header class="result-header">
         <div>
           <h2>生成结果</h2>
-          <p>当前固定请求 b64_json，确保下载按钮直接保存图片文件。</p>
+          <p>接口返回图片链接或 base64 图片数据后，会在这里显示并支持下载。</p>
         </div>
         <div class="status">
           <span :class="{ active: loading }">{{ loading ? '生成中' : '空闲' }}</span>
